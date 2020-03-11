@@ -1,0 +1,3 @@
+[submodule "tutorial"]
+	path = tutorial
+	url = git@github.com:kr1surb4n/scrapy_kit.git
