@@ -55,7 +55,6 @@ services:
     ports:
       - 1025:1025
       - 8025:8025
-
   swagger:
     depends_on:
       - postgrest
@@ -147,6 +146,12 @@ services:
       - '--path.rootfs=/rootfs'
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+  postgres_exporter:
+    image: wrouesnel/postgres_exporter
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://root:root@db:5432/postgres?sslmode=disable"
+
   cadvisor:
     image: gcr.io/google-containers/cadvisor
     container_name: cadvisor
