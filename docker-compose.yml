@@ -1,188 +1,209 @@
-version: '3.3'
-
+version: '3.2'
 services:
-   db:
-     image: postgres:alpine
-     ports:
-       - "5433:5432"
-     volumes:
-       - db_data:/var/lib/postgresql
-       - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
-       - ./data:/var/lib/postgresql/data
-       - ./container:/etc/postgresql
-     restart: always
-     command: [
-         #'-c config_file=/etc/postgresql/postgresql.conf',
-         #'--character-set-server=utf8mb4', # change
-         #'--collation-server=utf8mb4_unicode_ci' #change
-     ]
-     environment:
-       - POSTGRES_USER=root
-       - POSTGRES_PASSWORD=root
-       - POSTGRES_DB=postgres
+  db:
+    image: postgres:alpine
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+      - ./db/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+      - ./db/data:/var/lib/postgresql/data
+      - ./db/etc:/etc/postgresql
+    restart: always
+    command: [
+      #'-c config_file=/etc/postgresql/postgresql.conf',
+      #'--character-set-server=utf8mb4', # change
+      #'--collation-server=utf8mb4_unicode_ci' #change
+    ]
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=postgres
 
-   pgadmin:
-     depends_on:
-       - db
-     image: dpage/pgadmin4
-     ports:
-       - 4012:80
-     environment:
-       PGADMIN_DEFAULT_EMAIL: user@blue.com
-       PGADMIN_DEFAULT_PASSWORD: password
+  pgadmin:
+    depends_on:
+      - db
+    image: dpage/pgadmin4
+    ports:
+      - 4012:80
+    environment:
+      PGADMIN_DEFAULT_EMAIL: user@blue.com
+      PGADMIN_DEFAULT_PASSWORD: password
 
-   postgrest:
-     depends_on:
-       - db
-     links:
-       - db:db
-     image: postgrest/postgrest
-     ports:
-       - "3020:3020"
-     environment:
-       PGRST_DB_URI: postgres://root:root@db:5432/postgres
-       PGRST_DB_SCHEMA: pub
-       PGRST_DB_ANON_ROLE: postgres
-     restart: unless-stopped
+  postgrest:
+    depends_on:
+      - db
+    links:
+      - db:db
+    image: postgrest/postgrest
+    ports:
+      - "3020:3020"
+    environment:
+      PGRST_DB_URI: postgres://root:root@db:5432/postgres
+      PGRST_DB_SCHEMA: pub
+      PGRST_DB_ANON_ROLE: postgres
+    restart: unless-stopped
 
-   adminer:
-     image: adminer
-     restart: always
-     ports:
-       - 4013:8080
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 4013:8080
 
-   mailhog:
-     image: mailhog/mailhog
-     ports:
-       - 1025:1025
-       - 8025:8025
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - 1025:1025
+      - 8025:8025
 
-   swagger:
-     depends_on:
-       - postgrest
-     links:
-       - postgrest:postgrest
-     image: swaggerapi/swagger-ui
-     ports:
-       - "8080:8080"
-     expose:
-       - "8080"
-     environment:
-       API_URL: http://postgrest:3020/
+  swagger:
+    depends_on:
+      - postgrest
+    links:
+      - postgrest:postgrest
+    image: swaggerapi/swagger-ui
+    ports:
+      - "8080:8080"
+    expose:
+      - "8080"
+    environment:
+      API_URL: http://postgrest:3020/
 
-    grafana:
-      image: grafana/grafana
-      depends_on:
-        - prometheus
-      ports:
-        - "3030:3030"
-      volumes:
-        - grafana_data:/var/lib/grafana
-        - ./grafana/provisioning:/etc/grafana/provisioning
-      environment:
-        - GF_SERVER_ROOT_URL=http://grafana.example.com:3000/
-        - GF_SECURITY_ADMIN_USER=admin
-        - GF_SECURITY_ADMIN_PASSWORD=admin
-        - GF_SMTP_ENABLED=true
-        - GF_SMTP_HOST=smtp.gmail.com:587
-        - GF_SMTP_USER=grafana@example.com
-        - GF_SMTP_FROM_ADDRESS=grafana@example.com
-        - GF_SMTP_PASSWORD=******
-        - GF_USERS_ALLOW_SIGN_UP=false
-        - GF_ALERTING_ERROR_OR_TIMEOUT=keep_state
+  grafana:
+    image: grafana/grafana
+    depends_on:
+      - prometheus
+#    ports:
+#      - "3030:3030"
+    expose:
+      - 3030
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SERVER_ROOT_URL=http://grafana.example.com:3000/
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SMTP_ENABLED=true
+      - GF_SMTP_HOST=smtp.gmail.com:587
+      - GF_SMTP_USER=grafana@example.com
+      - GF_SMTP_FROM_ADDRESS=grafana@example.com
+      - GF_SMTP_PASSWORD=******
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ALERTING_ERROR_OR_TIMEOUT=keep_state
 
-    prometheus:
-      image: prom/prometheus:0.18.0
-      volumes:
-          - prometheus_data:/prometheus
-          - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    labels:
+      org.label-schema.group: "monitoring"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    expose:
+      - 9090
 
-      command:
-          - '-config.file=/etc/prometheus/prometheus.yml'
-          - '-storage.local.path=/prometheus'
-          - '-alertmanager.url=http://alertmanager:9093'
-          - '--storage.tsdb.retention.time=200h'
-          - '--web.enable-lifecycle'
-      ports:
-          - '9090:9090'
+  alertmanager:
+    image: prom/alertmanager
+    container_name: alertmanager
+    labels:
+      org.label-schema.group: "monitoring"
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+  pushgateway:
+    image: prom/pushgateway
+    container_name: pushgateway
+    labels:
+      org.label-schema.group: "monitoring"
+    restart: unless-stopped
+    expose:
+      - 9091
 
-    alertmanager:
-      image: prom/alertmanager:0.1.1
-      volumes:
-          - ./config/alertmanager.yml:/alertmanager.yml
-      command:
-          - '-config.file=/alertmanager.yml'
-    pushgateway:
-      image: prom/pushgateway:v1.1.0
-      container_name: pushgateway
-      restart: unless-stopped
-      expose:
-        - 9091
-    node-exporter:
-      image: prom/node-exporter:v0.18.1
-      ports:
-          - '9100:9100'
-      volumes:
-        - /proc:/host/proc:ro
-        - /sys:/host/sys:ro
-        - /:/rootfs:ro
-      command:
-        - '--path.procfs=/host/proc'
-        - '--path.rootfs=/rootfs'
-        - '--path.sysfs=/host/sys'
-        - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
-    cadvisor:
-      image: gcr.io/google-containers/cadvisor:v0.34.0
-      container_name: cadvisor
-      volumes:
-        - /:/rootfs:ro
-        - /var/run:/var/run:rw
-        - /sys:/sys:ro
-        - /var/lib/docker:/var/lib/docker:ro
-        #- /cgroup:/cgroup:ro #doesn't work on MacOS only for Linux
-      expose:
-        - 8080
-    caddy:
-      image: stefanprodan/caddy
-      container_name: caddy
-      ports:
-        - "3030:3030"
-        - "9090:9090"
-        - "9093:9093"
-        - "9091:9091"
-      volumes:
-        - ./caddy:/etc/caddy
-      environment:
-        - ADMIN_USER=${ADMIN_USER:-admin}
-        - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+  node-exporter:
+    image: prom/node-exporter
+    container_name: nodeexporter
+    labels:
+      org.label-schema.group: "monitoring"
+    expose:
+      - 9100
+#    ports:
+#      - '9100:9100'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+  cadvisor:
+    image: gcr.io/google-containers/cadvisor
+    container_name: cadvisor
+    labels:
+      org.label-schema.group: "monitoring"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      #- /cgroup:/cgroup:ro #doesn't work on MacOS only for Linux
+    expose:
+      - 8081
 
-    zookeeper:
-      image: wurstmeister/zookeeper
-      ports:
-        - "2181"
-      hostname: zookeeper
-    kafka:
-      image: wurstmeister/kafka
-      command: [start-kafka.sh]
-      ports:
-        - "9092"
-      hostname: kafka
-      environment:
-        KAFKA_CREATE_TOPICS: "DownloadLinks:1:1,Google:1:1" # topic:partition:replicas
-        KAFKA_ADVERTISED_HOST_NAME: kafka # docker-machine ip
-        KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-        KAFKA_ADVERTISED_PORT: 9092
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-      depends_on:
-        - "zookeeper"
+  caddy:
+    image: stefanprodan/caddy
+    container_name: caddy
+    labels:
+      org.label-schema.group: "monitoring"
+    ports:
+      - "3030:3030"
+      - "9090:9090"
+      - "9091:9091"
+      - "9093:9093"
+    volumes:
+      - ./monitoring/caddy:/etc/caddy
+    environment:
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
 
-    link_downloader:
-      build: ./tutorial/
-      depends_on:
-        - "kafka"
-        - "db"
-        - "postgrest"
+  zookeeper:
+    image: wurstmeister/zookeeper
+    ports:
+      - "2181"
+    hostname: zookeeper
+  kafka:
+    image: wurstmeister/kafka
+    command: [start-kafka.sh]
+    ports:
+      - "9092"
+    hostname: kafka
+    environment:
+      KAFKA_CREATE_TOPICS: "DownloadLinks:1:1,Google:1:1" # topic:partition:replicas
+      KAFKA_ADVERTISED_HOST_NAME: kafka # docker-machine ip
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_PORT: 9092
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - "zookeeper"
+
+#  link_downloader:
+#    build: ./tutorial/
+#    depends_on:
+#      - "kafka"
+#      - "db"
+#      - "postgrest"
 
 
 volumes:
